@@ -68,12 +68,12 @@ class BankingAgent(HalfDuplexAgent[AgentState]):
         self,
         tools: list[Tool],
         domain_policy: str,
-        llm: str = "anthropic/claude-haiku-4-5-20251001",
+        llm: str = "openai/gpt-5.4-mini",
         llm_args: Optional[dict] = None,
     ):
         super().__init__(tools=tools, domain_policy=domain_policy)
         self.llm = llm
-        self.llm_args = llm_args or {}
+        self.llm_args = llm_args or {"temperature": 0.0, "seed": 300}
 
     def get_init_state(
         self, message_history: Optional[list[Message]] = None
@@ -119,6 +119,6 @@ def create_agent(tools, domain_policy, **kwargs):
     return BankingAgent(
         tools=tools,
         domain_policy=domain_policy,
-        llm=kwargs.get("llm", "anthropic/claude-haiku-4-5-20251001"),
-        llm_args=kwargs.get("llm_args"),
+        llm=kwargs.get("llm", "openai/gpt-5.4-mini"),
+        llm_args=kwargs.get("llm_args", {"temperature": 0.0, "seed": 300}),
     )

@@ -2,10 +2,11 @@
 # ──────────────────────────────────────────────────────────────────────────────
 # tau3-banking evaluation script
 #
-# Runs the agent defined in agent.py against 25 banking_knowledge tasks
+# Runs the agent defined in agent.py against banking_knowledge tasks
 # from tau3-bench and reports pass@1.
 #
 # Usage:  bash eval/eval.sh
+# Env:    SAMPLE_FRAC=0.2 bash eval/eval.sh   # run ~5 tasks for fast iteration
 # Output: prints score summary ending with the standard hive format.
 # ──────────────────────────────────────────────────────────────────────────────
 set -euo pipefail
@@ -16,14 +17,15 @@ TAU3_DIR="$TASK_DIR/tau3-bench"
 PYTHON="$TAU3_DIR/.venv/bin/python3"
 
 # ── Settings ─────────────────────────────────────────────────────────────────
-AGENT_LLM="anthropic/claude-haiku-4-5-20251001"
+AGENT_LLM="openai/gpt-5.4-mini"
 USER_LLM="openai/gpt-4.1"
-MAX_CONCURRENCY=1
+MAX_CONCURRENCY=16
 MAX_STEPS=200
 TIMEOUT=1800  # 30 minutes
+SAMPLE_FRAC="${SAMPLE_FRAC:-1.0}"
 
 # 25 representative tasks spread across the full set
-TASK_IDS="task_001,task_004,task_007,task_012,task_016,task_020,task_024,task_028,task_033,task_037,task_041,task_045,task_049,task_053,task_057,task_061,task_065,task_069,task_073,task_077,task_081,task_085,task_089,task_094,task_099"
+ALL_TASK_IDS="task_001,task_004,task_007,task_012,task_016,task_020,task_024,task_028,task_033,task_037,task_041,task_045,task_049,task_053,task_057,task_061,task_065,task_069,task_073,task_077,task_081,task_085,task_089,task_094,task_099"
 
 # ── Validate prerequisites ──────────────────────────────────────────────────
 if [ ! -d "$TAU3_DIR" ]; then
@@ -35,16 +37,6 @@ fi
 if [ ! -f "$PYTHON" ]; then
     echo "ERROR: venv not found at $TAU3_DIR/.venv"
     echo "Run 'bash prepare.sh' first."
-    exit 1
-fi
-
-if [ -z "${ANTHROPIC_API_KEY:-}" ]; then
-    echo "ERROR: ANTHROPIC_API_KEY is not set (needed for agent LLM)"
-    exit 1
-fi
-
-if [ -z "${OPENAI_API_KEY:-}" ]; then
-    echo "ERROR: OPENAI_API_KEY is not set (needed for user simulator)"
     exit 1
 fi
 
@@ -63,11 +55,27 @@ from agent import RETRIEVAL_KWARGS
 print(json.dumps(RETRIEVAL_KWARGS) if RETRIEVAL_KWARGS else '')
 " 2>/dev/null || echo "")
 
+# ── Sample tasks ─────────────────────────────────────────────────────────────
+TASK_IDS=$("$PYTHON" -c "
+import random, math
+all_ids = '$ALL_TASK_IDS'.split(',')
+frac = float('$SAMPLE_FRAC')
+n = max(1, math.ceil(len(all_ids) * frac))
+if frac < 1.0:
+    random.seed(42)
+    sampled = sorted(random.sample(all_ids, n))
+else:
+    sampled = all_ids
+print(','.join(sampled))
+")
+NUM_TASKS=$(echo "$TASK_IDS" | tr ',' '\n' | wc -l | tr -d ' ')
+
 echo "=== tau3-banking eval ==="
 echo "Agent LLM:         $AGENT_LLM"
 echo "User LLM:          $USER_LLM"
 echo "Retrieval variant:  $RETRIEVAL_VARIANT"
-echo "Tasks:             25 / 97"
+echo "Tasks:             $NUM_TASKS / 25 (SAMPLE_FRAC=$SAMPLE_FRAC)"
+echo "Concurrency:       $MAX_CONCURRENCY"
 echo "Timeout:           ${TIMEOUT}s"
 echo ""
 
@@ -130,6 +138,9 @@ passed = sum(1 for r in sims if r.reward_info and r.reward_info.reward == 1.0)
 total = len(sims)
 score = passed / total if total > 0 else 0.0
 
+# Compute total cost
+total_cost = sum((r.agent_cost or 0.0) + (r.user_cost or 0.0) for r in sims)
+
 # Write detailed results
 details = []
 for r in sims:
@@ -142,9 +153,9 @@ for r in sims:
     })
 
 with open('$RESULTS_JSON', 'w') as f:
-    json.dump({'passed': passed, 'total': total, 'score': score, 'details': details}, f, indent=2)
+    json.dump({'passed': passed, 'total': total, 'score': score, 'cost_usd': total_cost, 'details': details}, f, indent=2)
 
-print(json.dumps({'passed': passed, 'total': total, 'score': score}))
+print(json.dumps({'passed': passed, 'total': total, 'score': score, 'cost_usd': total_cost}))
 " 2>&1 | tee /dev/stderr | tail -1 > /dev/null
 
 # ── Parse and display results ────────────────────────────────────────────────
@@ -154,13 +165,15 @@ if [ ! -f "$RESULTS_JSON" ] || [ ! -s "$RESULTS_JSON" ]; then
     echo "---"
     echo "pass_at_1:        0.0"
     echo "correct:          0"
-    echo "total:            25"
+    echo "total:            $NUM_TASKS"
+    echo "cost_usd:         0.0000"
     exit 0
 fi
 
 PASSED=$("$PYTHON" -c "import json; d=json.load(open('$RESULTS_JSON')); print(d['passed'])")
 TOTAL=$("$PYTHON" -c "import json; d=json.load(open('$RESULTS_JSON')); print(d['total'])")
 SCORE=$("$PYTHON" -c "import json; d=json.load(open('$RESULTS_JSON')); print(f\"{d['score']:.4f}\")")
+COST=$("$PYTHON" -c "import json; d=json.load(open('$RESULTS_JSON')); print(f\"{d['cost_usd']:.4f}\")")
 
 # Show per-task breakdown
 echo ""
@@ -179,6 +192,7 @@ echo "---"
 echo "pass_at_1:        $SCORE"
 echo "correct:          $PASSED"
 echo "total:            $TOTAL"
+echo "cost_usd:         $COST"
 
 # Clean up
 rm -f "$RESULTS_JSON"

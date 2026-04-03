@@ -1,2 +1,1 @@
-# Task-level dependencies (tau3-bench deps installed via prepare.sh)
-# Add any additional packages your agent.py needs here.
+litellm>=1.0.0
