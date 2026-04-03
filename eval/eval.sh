@@ -19,7 +19,7 @@ PYTHON="$TAU3_DIR/.venv/bin/python3"
 # ── Settings ─────────────────────────────────────────────────────────────────
 AGENT_LLM="openai/gpt-5.4-mini"
 USER_LLM="openai/gpt-4.1"
-MAX_CONCURRENCY=16
+MAX_CONCURRENCY=3
 MAX_STEPS=200
 TIMEOUT=1800  # 30 minutes
 SAMPLE_FRAC="${SAMPLE_FRAC:-1.0}"
