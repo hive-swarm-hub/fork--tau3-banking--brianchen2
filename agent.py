@@ -96,14 +96,29 @@ class BankingAgent(HalfDuplexAgent[AgentState]):
     def get_init_state(
         self, message_history: Optional[list[Message]] = None
     ) -> AgentState:
-        # domain_policy already contains: Rho-Bank guidelines, KB search
-        # instructions, discoverable tool workflows, and authentication
-        # protocol. Keep the wrapper minimal to avoid conflicting instructions.
+        # Decision tree placed BEFORE domain_policy to prime key workflows.
+        # Addresses three observed failure modes without duplicating policy text.
+        decision_tree = (
+            "## Critical Decision Guide\n\n"
+            "**Human agent transfer requested?**\n"
+            "- Count total requests in this conversation.\n"
+            "- For requests 1–3: say you can help, attempt to resolve the issue.\n"
+            "- Transfer ONLY on the 4th request (or if KB specifies a different protocol).\n\n"
+            "**User wants to apply for / open a product?**\n"
+            "- KB_search to find the best matching product and its requirements.\n"
+            "- After identifying the right product, COMPLETE the transaction by calling\n"
+            "  the appropriate tool (e.g., apply_for_credit_card, open_account).\n"
+            "- Do not stop at describing products — finish the application.\n\n"
+            "**KB mentions an agent discoverable tool?**\n"
+            "- Step 1: unlock_discoverable_agent_tool(exact_tool_name_from_KB)\n"
+            "- Step 2: call_discoverable_agent_tool(exact_tool_name_from_KB, args)\n"
+            "- Never guess tool names. Never skip the unlock step.\n\n"
+            "**KB mentions a user discoverable tool?**\n"
+            "- Call give_discoverable_user_tool(exact_tool_name_from_KB).\n\n"
+        )
         system_prompt = (
-            f"{self.domain_policy}\n\n"
-            f"IMPORTANT: Follow every instruction above exactly. "
-            f"When unsure about a policy, search the knowledge base before acting. "
-            f"Never guess tool names — always search KB first to find the exact name."
+            f"{decision_tree}"
+            f"{self.domain_policy}"
         )
         return AgentState(
             system_messages=[SystemMessage(role="system", content=system_prompt)],
@@ -135,7 +150,7 @@ class BankingAgent(HalfDuplexAgent[AgentState]):
                 trace["content"] = response.content[:200]
             if hasattr(response, "tool_calls") and response.tool_calls:
                 trace["tool_calls"] = [
-                    {"name": tc.function.name, "args": tc.function.arguments[:100]}
+                    {"name": tc.name, "args": str(tc.arguments)[:100]}
                     for tc in response.tool_calls
                 ]
             print(f"[TRACE] {json.dumps(trace)}", file=sys.stderr)
