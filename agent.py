@@ -96,12 +96,14 @@ class BankingAgent(HalfDuplexAgent[AgentState]):
     def get_init_state(
         self, message_history: Optional[list[Message]] = None
     ) -> AgentState:
+        # domain_policy already contains: Rho-Bank guidelines, KB search
+        # instructions, discoverable tool workflows, and authentication
+        # protocol. Keep the wrapper minimal to avoid conflicting instructions.
         system_prompt = (
-            f"You are a helpful banking customer service agent.\n\n"
-            f"## Domain Policy\n{self.domain_policy}\n\n"
-            f"Follow the policy strictly. Use the provided tools to help "
-            f"the customer. Always verify customer identity before making "
-            f"changes to their account."
+            f"{self.domain_policy}\n\n"
+            f"IMPORTANT: Follow every instruction above exactly. "
+            f"When unsure about a policy, search the knowledge base before acting. "
+            f"Never guess tool names — always search KB first to find the exact name."
         )
         return AgentState(
             system_messages=[SystemMessage(role="system", content=system_prompt)],
