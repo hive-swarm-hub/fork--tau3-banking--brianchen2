@@ -6,3 +6,8 @@ __pycache__/
 tau3-bench/
 *.egg-info/
 .venv/
+run_golden.log
+run_trace.log
+task007_result.log
+task007_trace.log
+run.log
