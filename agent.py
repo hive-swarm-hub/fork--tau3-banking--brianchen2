@@ -97,13 +97,14 @@ class BankingAgent(HalfDuplexAgent[AgentState]):
         self, message_history: Optional[list[Message]] = None
     ) -> AgentState:
         # Decision tree placed BEFORE domain_policy to prime key workflows.
-        # Addresses three observed failure modes without duplicating policy text.
+        # Addresses observed failure modes without duplicating policy text.
         decision_tree = (
             "## Critical Decision Guide\n\n"
-            "**Human agent transfer requested?**\n"
-            "- Count total requests in this conversation.\n"
-            "- For requests 1–3: say you can help, attempt to resolve the issue.\n"
-            "- Transfer ONLY on the 4th request (or if KB specifies a different protocol).\n\n"
+            "**Customer asks about their specific accounts / eligibility / history?**\n"
+            "- ALWAYS verify identity first (ask for 2 of 4: DOB, email, phone, address).\n"
+            "- After verifying, call log_verification.\n"
+            "- Then KB_search for any discoverable tools needed to look up their data.\n"
+            "- Do not give personalized account info from conversation alone — use tools.\n\n"
             "**User wants to apply for / open a product?**\n"
             "- KB_search to find the best matching product and its requirements.\n"
             "- After identifying the right product, COMPLETE the transaction by calling\n"
@@ -115,6 +116,9 @@ class BankingAgent(HalfDuplexAgent[AgentState]):
             "- Never guess tool names. Never skip the unlock step.\n\n"
             "**KB mentions a user discoverable tool?**\n"
             "- Call give_discoverable_user_tool(exact_tool_name_from_KB).\n\n"
+            "**Human agent transfer requested?**\n"
+            "- Check KB first for scenario-specific transfer protocol.\n"
+            "- Default (no KB override): help for requests 1–3, transfer on 4th.\n\n"
         )
         system_prompt = (
             f"{decision_tree}"
